@@ -1844,9 +1844,13 @@ NODE_DISPLAY_NAME_MAPPINGS = {
 }
 
 EXTENSION_WEB_DIRS = {}
+from scanner.write_to_db_record import write_to_db_record
 
+cur_node_package = {}
 def load_custom_node(module_path, ignore=set()):
+    global cur_node_package
     module_name = os.path.basename(module_path)
+    cur_node_package = {}
     if os.path.isfile(module_path):
         sp = os.path.splitext(module_path)
         module_name = sp[0]
@@ -1867,6 +1871,7 @@ def load_custom_node(module_path, ignore=set()):
             web_dir = os.path.abspath(os.path.join(module_dir, getattr(module, "WEB_DIRECTORY")))
             if os.path.isdir(web_dir):
                 EXTENSION_WEB_DIRS[module_name] = web_dir
+                cur_node_package['webDir'] =  os.path.normpath(getattr(module, "WEB_DIRECTORY"))
 
         if hasattr(module, "NODE_CLASS_MAPPINGS") and getattr(module, "NODE_CLASS_MAPPINGS") is not None:
             for name in module.NODE_CLASS_MAPPINGS:
@@ -1881,6 +1886,7 @@ def load_custom_node(module_path, ignore=set()):
     except Exception as e:
         logging.warning(traceback.format_exc())
         logging.warning(f"Cannot import {module_path} module for custom nodes: {e}")
+        cur_node_package['importError'] = traceback.format_exc() + f"\nCannot import {module_path} module for custom nodes: {e}"
         return False
 
 def load_custom_nodes():
@@ -1897,8 +1903,19 @@ def load_custom_nodes():
             if os.path.isfile(module_path) and os.path.splitext(module_path)[1] != ".py": continue
             if module_path.endswith(".disabled"): continue
             time_before = time.perf_counter()
+            prev_nodes = set(NODE_CLASS_MAPPINGS.keys())
             success = load_custom_node(module_path, base_node_names)
             node_import_times.append((time.perf_counter() - time_before, module_path, success))
+            input_dict = {
+                'NODE_CLASS_MAPPINGS': NODE_CLASS_MAPPINGS,
+                'NODE_DISPLAY_NAME_MAPPINGS': NODE_DISPLAY_NAME_MAPPINGS,
+                'cur_node_package': cur_node_package,
+                'module_path': module_path,
+                'prev_nodes': prev_nodes,
+                'success': success,
+                'time_before': time_before
+            }
+            write_to_db_record(input_dict)
 
     if len(node_import_times) > 0:
         logging.info("\nImport times for custom nodes:")

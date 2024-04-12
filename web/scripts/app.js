@@ -29,6 +29,10 @@ function sanitizeNodeName(string) {
  */
 
 export class ComfyApp {
+  /** comfyspace cloud @type {string[]} */
+  extensionFilesPath = [];
+  /** comfyspace cloud @type {string[]} */
+  nodeDefs = {};
 	/**
 	 * List of entries to queue
 	 * @type {{number: number, batchCount: number}[]}
@@ -51,7 +55,7 @@ export class ComfyApp {
 
 	constructor() {
 		this.ui = new ComfyUI(this);
-		this.logging = new ComfyLogging(this);
+		// this.logging = new ComfyLogging(this);
 
 		/**
 		 * List of extensions that are registered with the app
@@ -1351,10 +1355,10 @@ export class ComfyApp {
 	 * Loads all extensions from the API into the window in parallel
 	 */
 	async #loadExtensions() {
-	    const extensions = await api.getExtensions();
-	    this.logging.addEntry("Comfy.App", "debug", { Extensions: extensions });
+	    // const extensions = await api.getExtensions();
+	    // this.logging.addEntry("Comfy.App", "debug", { Extensions: extensions });
 	
-	    const extensionPromises = extensions.map(async ext => {
+	    const extensionPromises = this.extensionFilesPath.map(async ext => {
 	        try {
 	            await import(api.apiURL(ext));
 	        } catch (error) {
@@ -1449,8 +1453,8 @@ export class ComfyApp {
 	 * Set up the app on the page
 	 */
 	async setup() {
-		await this.#setUser();
-		await this.ui.settings.load();
+		// await this.#setUser();
+		// await this.ui.settings.load();
 		await this.#loadExtensions();
 
 		// Create and mount the LiteGraph in the DOM
@@ -1464,7 +1468,7 @@ export class ComfyApp {
 		this.#addProcessMouseHandler();
 		this.#addProcessKeyHandler();
 		this.#addConfigureHandler();
-		this.#addApiUpdateHandlers();
+		// this.#addApiUpdateHandlers();
 
 		this.graph = new LGraph();
 
@@ -1496,41 +1500,12 @@ export class ComfyApp {
 		await this.registerNodes();
 		initWidgets(this);
 
-		// Load previous workflow
-		let restored = false;
-		try {
-			const loadWorkflow = async (json) => {
-				if (json) {
-					const workflow = JSON.parse(json);
-					await this.loadGraphData(workflow);
-					return true;
-				}
-			};
-			const clientId = api.initialClientId ?? api.clientId;
-			restored =
-				(clientId && (await loadWorkflow(sessionStorage.getItem(`workflow:${clientId}`)))) ||
-				(await loadWorkflow(localStorage.getItem("workflow")));
-		} catch (err) {
-			console.error("Error loading previous workflow", err);
-		}
-
-		// We failed to restore a workflow so load the default
-		if (!restored) {
-			await this.loadGraphData();
-		}
-
-		// Save current workflow automatically
-		setInterval(() => {
-			const workflow = JSON.stringify(this.graph.serialize());
-			localStorage.setItem("workflow", workflow);
-			if (api.clientId) {
-				sessionStorage.setItem(`workflow:${api.clientId}`, workflow);
-			}
-		}, 1000);
+		// [deleted]Load previous workflow
+		// [deleted]We failed to restore a workflow so load the default
 
 		this.#addDrawNodeHandler();
 		this.#addDrawGroupsHandler();
-		this.#addDropHandler();
+		// this.#addDropHandler();
 		this.#addCopyHandler();
 		this.#addPasteHandler();
 		this.#addKeyboardHandler();
@@ -1544,7 +1519,7 @@ export class ComfyApp {
 	async registerNodes() {
 		const app = this;
 		// Load node definitions from the backend
-		const defs = await api.getNodeDefs();
+		const defs = this.nodeDefs;
 		await this.registerNodesFromDefs(defs);
 		await this.#invokeExtensionsAsync("registerCustomNodes");
 	}
@@ -1687,6 +1662,7 @@ export class ComfyApp {
 	}
 
 	showMissingNodesError(missingNodeTypes, hasAddedNodes = true) {
+    return;
 		let seenTypes = new Set();
 
 		this.ui.dialog.show(
@@ -2250,4 +2226,21 @@ export class ComfyApp {
 	}
 }
 
-export const app = new ComfyApp();
+export async function loadModuleBasedOnPath() {
+  console.log('Loading module based on path');
+  const queryParams = new URLSearchParams(window.location.search);
+  const workflowVersionID = queryParams.get('workflowVersionID');
+  const packageID = queryParams.get('packageID');
+  if(workflowVersionID !== null) {
+    const {ComfyViewWorkflowApp} = await import("./comfyspace_viewWorkflowApp.js");
+    app = new ComfyViewWorkflowApp();
+  } else if(packageID !=null) {
+    const {ComfyViewNodePackageApp} = await import("./comfyspace_viewNodePackageApp.js");
+    app = new ComfyViewNodePackageApp();
+  } else {
+    // For any other path, import app.js and perform setup
+    app = new ComfyApp()
+  }
+}
+
+export let app = null;
